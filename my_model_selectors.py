@@ -68,16 +68,30 @@ class SelectorBIC(ModelSelector):
     Bayesian information criteria: BIC = -2 * logL + p * logN
     """
 
+    def bic(self, model, n):
+        # https://discussions.udacity.com/t/number-of-parameters-bic-calculation/233235/
+        # n*n + 2*n*d-1
+        d = model.n_features
+        p = n ** 2 + 2 * d * n - 1
+        return -2 * model.score(self.X, self.lengths) + p * np.log(len(self.X))
+
     def select(self):
         """ select the best model for self.this_word based on
         BIC score for n between self.min_n_components and self.max_n_components
 
         :return: GaussianHMM object
         """
+        warnings.filterwarnings("ignore", category=RuntimeWarning)
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-        # TODO implement model selection based on BIC scores
-        raise NotImplementedError
+        min_score, best_model = float("inf"), None
+        for n in range(self.min_n_components, self.max_n_components + 1):
+            try:
+                model = self.base_model(n)
+                min_score, best_model = min((self.bic(model, n), model), (min_score, best_model))
+            except:
+                pass
+        return best_model
 
 
 class SelectorDIC(ModelSelector):
@@ -90,11 +104,25 @@ class SelectorDIC(ModelSelector):
     DIC = log(P(X(i)) - 1/(M-1)SUM(log(P(X(all but i))
     '''
 
-    def select(self):
-        warnings.filterwarnings("ignore", category=DeprecationWarning)
+    def dic(self, model):
+        logL = model.score(self.X, self.lengths)
+        anti_likehood = 0
+        for word in self.words:
+            x, lengths = self.hwords[word]
+            anti_likehood += model.score(x, lengths)
+        return logL - anti_likehood / len(self.words)
 
-        # TODO implement model selection based on DIC scores
-        raise NotImplementedError
+    def select(self):
+        warnings.filterwarnings("ignore", category=RuntimeWarning)
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
+        max_val, best_model = float("-inf"), None
+        for n in range(self.min_n_components, self.max_n_components+1):
+            try:
+                model = self.base_model(n)
+                max_val, best_model = max((max_val, best_model), (self.dic(model), model))
+            except:
+                pass
+        return best_model
 
 
 class SelectorCV(ModelSelector):
@@ -103,7 +131,25 @@ class SelectorCV(ModelSelector):
     '''
 
     def select(self):
+        warnings.filterwarnings("ignore", category=RuntimeWarning)
         warnings.filterwarnings("ignore", category=DeprecationWarning)
+        highest_avg_score, split_method, best_n = float("inf"), KFold(n_splits=2), self.random_state
+        for n in range(self.min_n_components, self.max_n_components + 1):
+            try:
+                fold = 0
+                total_logL = float("inf")
+                for cv_train_idx, cv_test_idx in split_method.split(self.sequences):
+                    X_train, lengths_train = combine_sequences(cv_train_idx, self.sequences)
+                    X_test, lengths_test = combine_sequences(cv_test_idx, self.sequences)
+                    model = GaussianHMM(n_components=n, covariance_type="diag", n_iter=1000,
+                        random_state=self.random_state, verbose=False).fit(X_train, lengths_train)
+                    logL = model.score(X_test, lengths_test)
+                    total_logL += logL
+                    fold += 1
+                avg_score = float(total_logL / fold)
+                if avg_score > highest_avg_score:
+                    highest_avg_score, best_n = avg_score, n
+            except:
+                pass
+        return self.base_model(best_n)
 
-        # TODO implement model selection using CV
-        raise NotImplementedError
