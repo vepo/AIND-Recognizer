@@ -7,9 +7,9 @@ from my_model_selectors import SelectorBIC
 from my_model_selectors import SelectorDIC
 from my_model_selectors import SelectorCV
 from asl_utils import show_errors
-import arpa
+#import arpa
 
-lm_models = arpa.loadf("asl.lm")
+#lm_models = arpa.loadf("asl.lm")
 
 def score_lm(word, last_words):
     try:
@@ -49,7 +49,7 @@ def recognize(models: dict, test_set: SinglesData):
         for model_word, model in models.items():
             prob = float("-inf")
             try:
-                prob = model.score(X, lengths) + score_lm(model_word, recog_sentence[-2:])
+                prob = model.score(X, lengths)# + score_lm(model_word, recog_sentence[-2:])
             except:
                 pass
             word_probability[model_word] = prob
@@ -80,6 +80,30 @@ def train_all_words(features, model_selector):
                         n_constant=3).select()
         model_dict[word]=model
     return model_dict
+
+def WER(guesses, test_set):
+    S = 0
+    N = len(test_set.wordlist)
+    num_test_words = len(test_set.wordlist)
+    if len(guesses) != num_test_words:
+        print("Size of guesses must equal number of test words ({})!".format(num_test_words))
+    for word_id in range(num_test_words):
+        if guesses[word_id] != test_set.wordlist[word_id]:
+            S += 1
+
+    return float(S) / float(N)
+
+def CORRECT(guesses, test_set):
+    S = 0
+    N = len(test_set.wordlist)
+    num_test_words = len(test_set.wordlist)
+    if len(guesses) != num_test_words:
+        print("Size of guesses must equal number of test words ({})!".format(num_test_words))
+    for word_id in range(num_test_words):
+        if guesses[word_id] != test_set.wordlist[word_id]:
+            S += 1
+
+    return N - S
 
 if __name__ == "__main__":
     print('Initialize features...')
@@ -131,10 +155,23 @@ if __name__ == "__main__":
     features_custom = feature_delta_nose + feature_dist_norm + features_scaled
     asl.df[features_custom]
 
-    print("Training models...")
-    models = train_all_words(features_custom, SelectorCV)
-    print("Extracting features...")
-    test_set = asl.build_test(features_custom)
-    print("Recognizing...")
-    probabilities, guesses = recognize(models, test_set)
-    show_errors(guesses, test_set)
+    features = {
+        'features_ground': features_ground,
+        'features_polar': features_polar,
+        'features_delta': features_delta,
+        'features_norm': features_norm,
+        'ALL': features_ground + features_polar + features_delta + features_norm,
+        'features_custom': features_custom,
+        'ALL_with_custom': features_ground + features_polar + features_delta + features_norm + features_custom
+        }
+    selectors = {
+        'SelectorBIC': SelectorBIC,
+        'SelectorDIC': SelectorDIC,
+        'SelectorCV': SelectorCV
+    }
+    for set_name, set_value in features.items():
+        for sel_name, sel in selectors.items():
+            models = train_all_words(set_value, sel)
+            test_set = asl.build_test(set_value)
+            probabilities, guesses = recognize(models, test_set)
+            print('|{}|{}|{}|{}|'.format(set_name, sel_name, CORRECT(guesses, test_set), WER(guesses, test_set)))

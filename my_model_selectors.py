@@ -108,9 +108,10 @@ class SelectorDIC(ModelSelector):
         logL = model.score(self.X, self.lengths)
         anti_likehood = 0
         for word in self.words:
-            x, lengths = self.hwords[word]
-            anti_likehood += model.score(x, lengths)
-        return logL - anti_likehood / len(self.words)
+            if word != self.this_word:
+                x, lengths = self.hwords[word]
+                anti_likehood += model.score(x, lengths)
+        return logL - anti_likehood / (len(self.words) - 1)
 
     def select(self):
         warnings.filterwarnings("ignore", category=RuntimeWarning)
